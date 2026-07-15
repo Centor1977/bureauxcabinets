@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import { SiteHeader } from "@/components/site-header";
+import { SiteFooter } from "@/components/site-footer";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -13,9 +15,9 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Bureaux & Cabinets — Trouvez le bureau ou cabinet qu'il vous faut",
+  title: "Accès Autonome Lille",
   description:
-    "Décrivez votre recherche de bureau ou de cabinet professionnel : nos agences partenaires vous font des propositions adaptées.",
+    "Accès Autonome Lille — Solutions d'accès autonome pour logements meublés, locations de courte durée et biens gérés à distance à Lille métropole.",
 };
 
 export default function RootLayout({
@@ -25,10 +27,14 @@ export default function RootLayout({
 }>) {
   return (
     <html
-      lang="en"
+      lang="fr"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col">{children}</body>
+      <body className="flex min-h-full flex-col bg-aal-offwhite text-aal-navy">
+        <SiteHeader />
+        <main className="flex flex-1 flex-col">{children}</main>
+        <SiteFooter />
+      </body>
     </html>
   );
 }
