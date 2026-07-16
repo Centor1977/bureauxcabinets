@@ -1,6 +1,19 @@
-import { PlaceholderPhoto } from "@/components/ui/placeholder-photo";
+import Image from "next/image";
 
-const PHOTO_SLOTS = ["Porte d’entrée", "Trousseau de clés", "Interphone d’immeuble"];
+const PHOTOS = [
+  {
+    src: "/images/acces-autonome/probleme-cles-perdues.png",
+    alt: "Clés laissées dans une serrure de porte de logement",
+  },
+  {
+    src: "/images/acces-autonome/probleme-boite-cles-visible.png",
+    alt: "Boîtes à clés visibles accrochées près d’une entrée d’immeuble",
+  },
+  {
+    src: "/images/acces-autonome/probleme-interphone.png",
+    alt: "Interphone d’immeuble avec boutons de sonnerie et badge, sans code d’accès",
+  },
+];
 
 export function ProblemSection() {
   return (
@@ -21,8 +34,17 @@ export function ProblemSection() {
         </div>
 
         <div className="grid grid-cols-3 gap-3">
-          {PHOTO_SLOTS.map((label) => (
-            <PlaceholderPhoto key={label} alt={label} className="aspect-[3/4]" />
+          {PHOTOS.map((photo) => (
+            <div key={photo.src} className="relative aspect-[3/4] overflow-hidden rounded-2xl">
+              <Image
+                src={photo.src}
+                alt={photo.alt}
+                fill
+                loading="lazy"
+                sizes="(min-width: 1024px) 16vw, 30vw"
+                className="object-cover"
+              />
+            </div>
           ))}
         </div>
       </div>

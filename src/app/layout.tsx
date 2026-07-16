@@ -18,6 +18,15 @@ export const metadata: Metadata = {
   title: "Accès Autonome Lille",
   description:
     "Accès Autonome Lille — Solutions d'accès autonome pour logements meublés, locations de courte durée et biens gérés à distance à Lille métropole.",
+  icons: {
+    icon: "/favicon.svg",
+  },
+  openGraph: {
+    title: "Accès Autonome Lille",
+    description:
+      "Accès Autonome Lille — Solutions d'accès autonome pour logements meublés, locations de courte durée et biens gérés à distance à Lille métropole.",
+    images: ["/images/acces-autonome/og-image.png"],
+  },
 };
 
 export default function RootLayout({
