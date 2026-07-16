@@ -1,8 +1,12 @@
 "use client";
 
-import { useId, useState } from "react";
+import { useId, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ChevronDownIcon } from "@/components/icons";
+import { createClient } from "@/lib/supabase/client";
+import type { TablesInsert } from "@/lib/supabase/database.types";
+import type { LandingPrefill, LandingTrackingContext } from "@/lib/landing/types";
+import { track } from "@/lib/tracking/track";
 
 const TYPE_BIEN_OPTIONS = [
   "Logement meublé / location de courte durée",
@@ -67,6 +71,50 @@ const PLAGES = ["9h–11h", "11h–13h", "14h–16h", "16h–18h", "18h–20h"];
 
 const MAX_PHOTOS = 3;
 const MAX_DATES = 3;
+
+// Correspondance entre les libellés affichés (verrouillés par le brief) et
+// les valeurs stockées en base (contraintes CHECK sur public.lead).
+const TYPE_BIEN_VALUES: Record<string, string> = {
+  "Logement meublé / location de courte durée": "logement_meuble_courte_duree",
+  "Appartement en immeuble": "appartement_immeuble",
+  "Immeuble avec plusieurs logements": "immeuble_plusieurs_logements",
+  Maison: "maison",
+  "Bureau / cabinet": "bureau_cabinet",
+  Autre: "autre",
+};
+
+const DELAI_VALUES: Record<string, string> = {
+  "Dès que possible": "des_que_possible",
+  "Sous 7 jours": "sous_7_jours",
+  "Sous 15 jours": "sous_15_jours",
+  "Sous 1 mois": "sous_1_mois",
+  "Projet à anticiper": "projet_a_anticiper",
+  "Je ne sais pas": "je_ne_sais_pas",
+};
+
+const NOMBRE_LOGEMENTS_VALUES: Record<string, string> = {
+  "1 logement": "1_logement",
+  "2 à 3 logements": "2_a_3_logements",
+  "4 à 10 logements": "4_a_10_logements",
+  "Plus de 10 logements": "plus_de_10_logements",
+  "Je gère des biens pour des clients": "gere_biens_clients",
+  "Je ne sais pas encore": "je_ne_sais_pas_encore",
+};
+
+const NIVEAU_SOLUTION_VALUES: Record<string, string> = {
+  "Une solution simple avec code": "solution_simple_code",
+  "Une ouverture à distance": "ouverture_a_distance",
+  "Des accès temporaires pour voyageurs ou prestataires": "acces_temporaires",
+  "Une gestion de plusieurs utilisateurs": "gestion_plusieurs_utilisateurs",
+  "Une solution complète logement + immeuble": "solution_complete",
+  "Je veux être conseillé": "veut_etre_conseille",
+};
+
+const MODE_CONTACT_VALUES: Record<string, string> = {
+  Téléphone: "telephone",
+  WhatsApp: "whatsapp",
+  Email: "email",
+};
 
 type CreneauDate = {
   date: string;
@@ -151,21 +199,40 @@ function ProgressIndicator({ step }: { step: 1 | 2 | 3 }) {
   );
 }
 
-export function LeadFormCard() {
+type LeadFormCardProps = {
+  prefill?: LandingPrefill;
+  trackingContext?: LandingTrackingContext;
+};
+
+export function LeadFormCard({ prefill, trackingContext }: LeadFormCardProps = {}) {
   const router = useRouter();
   const filesInputId = useId();
+  const hasStartedRef = useRef(false);
+
+  const trackingPayload = {
+    landing_intent: trackingContext?.landingIntent,
+    page_path: trackingContext?.pageUrl,
+    utm_campaign: trackingContext?.utmCampaign,
+    utm_term: trackingContext?.utmTerm,
+  };
+
+  function handleFormStart() {
+    if (hasStartedRef.current) return;
+    hasStartedRef.current = true;
+    track("form_start", trackingPayload);
+  }
 
   const [step, setStep] = useState<1 | 2 | 3>(1);
 
-  const [typeBien, setTypeBien] = useState("");
-  const [problemes, setProblemes] = useState<string[]>([]);
-  const [acces, setAcces] = useState<string[]>([]);
+  const [typeBien, setTypeBien] = useState(prefill?.typeBien ?? "");
+  const [problemes, setProblemes] = useState<string[]>(prefill?.problemes ?? []);
+  const [acces, setAcces] = useState<string[]>(prefill?.acces ?? []);
   const [ville, setVille] = useState("");
   const [delai, setDelai] = useState("");
 
   const [nombreLogements, setNombreLogements] = useState("");
   const [photos, setPhotos] = useState<PhotoItem[]>([]);
-  const [niveauSolution, setNiveauSolution] = useState("");
+  const [niveauSolution, setNiveauSolution] = useState(prefill?.niveauSolution ?? "");
   const [precisions, setPrecisions] = useState("");
 
   const [nom, setNom] = useState("");
@@ -176,6 +243,7 @@ export function LeadFormCard() {
   const [flexible, setFlexible] = useState(false);
   const [consentement, setConsentement] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   function handlePhotosChange(fileList: FileList | null) {
     if (!fileList) return;
@@ -225,7 +293,7 @@ export function LeadFormCard() {
     (hasCreneau || flexible) &&
     consentement;
 
-  function handleSubmit(event: React.FormEvent) {
+  async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
     if (!step3Ready) {
       setSubmitError(
@@ -234,6 +302,72 @@ export function LeadFormCard() {
       return;
     }
     setSubmitError(null);
+    setIsSubmitting(true);
+
+    const supabase = createClient();
+
+    // Les photos sont facultatives : un échec d'upload ne doit pas bloquer
+    // l'envoi de la demande.
+    const uploadedPhotoPaths = (
+      await Promise.all(
+        photos.map(async (photo) => {
+          const safeName = photo.file.name.replace(/[^a-zA-Z0-9.-]/g, "_");
+          const path = `${crypto.randomUUID()}-${safeName}`;
+          const { error } = await supabase.storage
+            .from("lead-photos")
+            .upload(path, photo.file);
+          return error ? null : path;
+        }),
+      )
+    ).filter((path): path is string => path !== null);
+
+    const creneaux = dates
+      .filter((entry) => entry.date && entry.plages.length > 0)
+      .map((entry) => ({ date: entry.date, plages: entry.plages }));
+
+    const payload: TablesInsert<"lead"> = {
+      type_bien: TYPE_BIEN_VALUES[typeBien] ?? typeBien,
+      problemes,
+      acces_concernes: acces,
+      ville_cp: ville,
+      delai: DELAI_VALUES[delai] ?? delai,
+      nb_logements: nombreLogements
+        ? (NOMBRE_LOGEMENTS_VALUES[nombreLogements] ?? nombreLogements)
+        : null,
+      photos: uploadedPhotoPaths,
+      niveau_solution: niveauSolution
+        ? (NIVEAU_SOLUTION_VALUES[niveauSolution] ?? niveauSolution)
+        : null,
+      precisions: precisions || null,
+      nom,
+      telephone,
+      email: email || null,
+      mode_contact: modeContact ? (MODE_CONTACT_VALUES[modeContact] ?? modeContact) : null,
+      creneaux,
+      flexible,
+      consentement,
+      landing_page: trackingContext?.landingPage ?? null,
+      landing_intent: trackingContext?.landingIntent ?? null,
+      page_url: trackingContext?.pageUrl ?? null,
+      utm_source: trackingContext?.utmSource ?? null,
+      utm_medium: trackingContext?.utmMedium ?? null,
+      utm_campaign: trackingContext?.utmCampaign ?? null,
+      utm_term: trackingContext?.utmTerm ?? null,
+      utm_content: trackingContext?.utmContent ?? null,
+      gclid: trackingContext?.gclid ?? null,
+    };
+
+    const { error } = await supabase.from("lead").insert(payload);
+
+    if (error) {
+      setIsSubmitting(false);
+      setSubmitError(
+        "Une erreur est survenue lors de l’envoi de votre demande. Merci de réessayer.",
+      );
+      return;
+    }
+
+    track("form_submit", trackingPayload);
     router.push("/merci");
   }
 
@@ -256,9 +390,11 @@ export function LeadFormCard() {
 
           <form
             className="mt-6 flex flex-col gap-5"
+            onFocusCapture={handleFormStart}
             onSubmit={(event) => {
               event.preventDefault();
               setStep(2);
+              track("form_step_2", trackingPayload);
             }}
           >
             <label className="flex flex-col gap-1.5 text-sm font-medium text-aal-navy">
@@ -389,6 +525,7 @@ export function LeadFormCard() {
             onSubmit={(event) => {
               event.preventDefault();
               setStep(3);
+              track("form_step_3", trackingPayload);
             }}
           >
             <label className="flex flex-col gap-1.5 text-sm font-medium text-aal-navy">
@@ -662,6 +799,7 @@ export function LeadFormCard() {
 
             <button
               type="submit"
+              disabled={isSubmitting}
               className="mt-1 inline-flex h-12 items-center justify-center rounded-full bg-aal-teal text-sm font-semibold text-white transition-colors hover:bg-aal-teal-dark disabled:cursor-not-allowed disabled:opacity-50"
             >
               Recevoir une estimation

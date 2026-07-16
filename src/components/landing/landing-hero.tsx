@@ -1,20 +1,27 @@
 import Image from "next/image";
-import Link from "next/link";
 import { LeadFormCard } from "@/components/lead-form/lead-form-card";
+import { TrackedCtaLink } from "./tracked-cta-link";
+import type { LandingConfig, LandingTrackingContext } from "@/lib/landing/types";
 
-const REASSURANCES = [
-  "Gratuit",
-  "Sans engagement",
-  "Professionnels vérifiés",
-  "Logements meublés & gestion à distance",
-];
+type LandingHeroProps = {
+  config: LandingConfig;
+  trackingContext: LandingTrackingContext;
+};
 
-export function HeroSection() {
+// Reprend strictement la structure et les classes du hero de la home
+// (src/components/home/hero-section.tsx), y compris le centrage vertical du
+// bloc texte sur sa propre zone plutôt que sur la hauteur du formulaire.
+export function LandingHero({ config, trackingContext }: LandingHeroProps) {
+  const ctaTrackingPayload = {
+    landing_intent: trackingContext.landingIntent,
+    page_path: trackingContext.pageUrl,
+  };
+
   return (
     <section id="hero" className="relative overflow-hidden bg-aal-navy">
       <Image
-        src="/images/acces-autonome/hero-lille-entree-smartphone.png"
-        alt="Entrée d’immeuble à Lille avec interphone et ouverture à distance par smartphone"
+        src={config.hero.image.src}
+        alt={config.hero.image.alt}
         fill
         priority
         sizes="100vw"
@@ -25,23 +32,19 @@ export function HeroSection() {
       <div className="relative mx-auto grid max-w-7xl grid-cols-1 gap-10 px-4 py-16 sm:px-6 lg:grid-cols-2 lg:items-start lg:gap-12 lg:px-8 lg:py-24">
         <div className="flex flex-col items-start gap-6 lg:min-h-[620px] lg:justify-center">
           <span className="rounded-full border border-aal-teal/50 bg-aal-teal/10 px-4 py-1.5 text-sm font-medium text-aal-teal">
-            Lille &amp; métropole
+            {config.hero.eyebrow}
           </span>
 
           <h1 className="text-4xl font-semibold leading-tight tracking-tight text-white sm:text-5xl">
-            Fini les remises de clés pour vos logements meublés à Lille.
+            {config.hero.h1}
           </h1>
 
           <p className="max-w-xl text-base leading-7 text-aal-offwhite/80 sm:text-lg">
-            Décrivez votre logement, votre porte et votre besoin. Un
-            professionnel vérifié vous rappelle pour confirmer la solution
-            adaptée — code, badge, serrure connectée, interphone ou
-            ouverture à distance — et vous proposer une estimation ou un
-            devis.
+            {config.hero.subtitle}
           </p>
 
           <ul className="flex flex-wrap gap-3">
-            {REASSURANCES.map((item) => (
+            {config.hero.reassurances.map((item) => (
               <li
                 key={item}
                 className="rounded-full border border-white/15 bg-white/5 px-4 py-2 text-sm text-white/90"
@@ -52,23 +55,25 @@ export function HeroSection() {
           </ul>
 
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-            <a
+            <TrackedCtaLink
               href="#formulaire"
+              trackingPayload={{ ...ctaTrackingPayload, cta: "hero_primary" }}
               className="inline-flex h-12 items-center justify-center rounded-full bg-aal-teal px-6 text-sm font-semibold text-white transition-colors hover:bg-aal-teal-dark"
             >
-              Recevoir une estimation pour mon logement
-            </a>
-            <Link
-              href="/#comment-ca-marche"
+              {config.hero.ctaPrimaryLabel}
+            </TrackedCtaLink>
+            <TrackedCtaLink
+              href={config.hero.ctaSecondaryHref}
+              trackingPayload={{ ...ctaTrackingPayload, cta: "hero_secondary" }}
               className="inline-flex h-12 items-center justify-center px-2 text-sm font-medium text-white/80 hover:text-white"
             >
-              Voir comment ça marche →
-            </Link>
+              {config.hero.ctaSecondaryLabel} →
+            </TrackedCtaLink>
           </div>
         </div>
 
         <div className="flex justify-center lg:justify-end">
-          <LeadFormCard />
+          <LeadFormCard prefill={config.prefill} trackingContext={trackingContext} />
         </div>
       </div>
     </section>
